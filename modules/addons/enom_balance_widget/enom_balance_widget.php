@@ -151,46 +151,53 @@ function enom_balance_widget_output($vars)
 {
     $module = 'enom_balance_widget';
 
-    // CSRF token: WHMCS makes generate_token() available in the admin area.
-    $token = function_exists('generate_token') ? generate_token('form') : '';
+    // CSRF token: generate_token('plain') returns the bare token value;
+    // generate_token('form') returns a complete hidden <input> (the source
+    // of a bug where the input-in-value made stray `"/>` text render above
+    // the form). Use plain here and check_token() on save.
+    $token = function_exists('generate_token') ? generate_token('plain') : '';
 
     $saved = false;
     $error = '';
 
     if (isset($_REQUEST['save']) && $_REQUEST['save'] == '1') {
-        $yellow = (float) $_REQUEST['low_balance_threshold'];
-        $red = (float) $_REQUEST['red_balance_threshold'];
-
-        if ($red >= $yellow) {
-            $error = 'The red threshold must be lower than the yellow threshold.';
+        if (function_exists('check_token') && !check_token()) {
+            $error = 'Security token mismatch — please reload the page and try again.';
         } else {
-            try {
-                $columns = ($_REQUEST['widget_columns'] == '2') ? '2' : '1';
-                foreach ([
-                    'low_balance_threshold' => (string) $yellow,
-                    'red_balance_threshold' => (string) $red,
-                    'widget_columns' => $columns,
-                ] as $setting => $value) {
-                    $exists = Capsule::table('tbladdonmodules')
-                        ->where('module', $module)
-                        ->where('setting', $setting)
-                        ->count();
-                    if ($exists > 0) {
-                        Capsule::table('tbladdonmodules')
+            $yellow = (float) $_REQUEST['low_balance_threshold'];
+            $red = (float) $_REQUEST['red_balance_threshold'];
+
+            if ($red >= $yellow) {
+                $error = 'The red threshold must be lower than the yellow threshold.';
+            } else {
+                try {
+                    $columns = ($_REQUEST['widget_columns'] == '2') ? '2' : '1';
+                    foreach ([
+                        'low_balance_threshold' => (string) $yellow,
+                        'red_balance_threshold' => (string) $red,
+                        'widget_columns' => $columns,
+                    ] as $setting => $value) {
+                        $exists = Capsule::table('tbladdonmodules')
                             ->where('module', $module)
                             ->where('setting', $setting)
-                            ->update(['value' => $value]);
-                    } else {
-                        Capsule::table('tbladdonmodules')->insert([
-                            'module' => $module,
-                            'setting' => $setting,
-                            'value' => $value,
-                        ]);
+                            ->count();
+                        if ($exists > 0) {
+                            Capsule::table('tbladdonmodules')
+                                ->where('module', $module)
+                                ->where('setting', $setting)
+                                ->update(['value' => $value]);
+                        } else {
+                            Capsule::table('tbladdonmodules')->insert([
+                                'module' => $module,
+                                'setting' => $setting,
+                                'value' => $value,
+                            ]);
+                        }
                     }
+                    $saved = true;
+                } catch (\Throwable $e) {
+                    $error = 'Save failed: ' . htmlspecialchars($e->getMessage());
                 }
-                $saved = true;
-            } catch (\Throwable $e) {
-                $error = 'Save failed: ' . htmlspecialchars($e->getMessage());
             }
         }
     }
