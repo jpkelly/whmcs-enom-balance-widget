@@ -51,38 +51,51 @@ the one thing worth being nagged about.
 
 ## Installation
 
-1. Copy `includes/hooks/enom_balance_widget.php` into your WHMCS root's
-   `includes/hooks/` directory:
+It's a WHMCS **addon module** with a settings page — no core-file edits:
+
+1. Copy the `modules/addons/enom_balance_widget/` folder into your WHMCS
+   root's `modules/addons/` directory:
 
    ```
    your-whmcs-root/
-   └── includes/
-       └── hooks/
-           └── enom_balance_widget.php
+   └── modules/
+       └── addons/
+           └── enom_balance_widget/
+               ├── enom_balance_widget.php   (module config)
+               ├── widget.php                (the widget class)
+               └── hooks.php                 (registers the widget)
    ```
 
-2. Open (or reload) your admin dashboard. The **eNom Account Balance**
-   widget appears automatically. Done.
+2. Go to *Setup → Addon Modules*, find **Enom Balance Widget**, click
+   **Activate**, then **Configure** to set the options.
 
-`includes/hooks/` is preserved by WHMCS upgrades, so the widget survives
-version upgrades — unlike a template or addon-module edit.
+3. Open (or reload) your admin dashboard. The **eNom Account Balance**
+   widget appears automatically.
+
+The widget registers itself from the addon module — nothing needs to be
+copied into `includes/hooks/`. Addon module code lives outside the upgraded
+file trees, so it survives WHMCS upgrades just like a hook file would.
 
 If you previously had the old Anaxa widget installed, deactivate it under
 *Setup → Addon Modules* first to avoid confusion (it isn't loading anyway on
 modern PHP, so there's nothing to migrate).
 
-## Configuration
+## Settings
 
-Everything sensible is a default; one knob is worth knowing about:
+*Setup → Addon Modules → Enom Balance Widget → Configure:*
 
-**Low-balance threshold** — edit `LOW_BALANCE_THRESHOLD` at the top of the
-widget class (default: `100`, in USD). A good rule of thumb: one month of
-renewals for your domain portfolio. When the balance is below it, the
-balance figure turns orange and a warning banner appears.
+| Setting | Default | What it does |
+|---|---|---|
+| **Yellow Threshold (warning)** | `100` | The balance (USD) below which the balance figure turns orange and a yellow low-balance banner appears. A good rule of thumb: one month of renewals for your domain portfolio. |
+| **Red Threshold (eNom warning level)** | `30` | The balance (USD) below which the figure turns red-pink and a red "critically low" banner appears. Set this to the same value as eNom's own panel warning threshold. Must be lower than the yellow threshold. |
+| **Widget Width** | `1` | Dashboard grid width — `1` (standard column) or `2` (double width). |
 
-That's the only configuration. Credentials are read at runtime through
-WHMCS's registrar module layer — nothing is stored in the file, nothing is
-logged, and the registrar module's **Test Mode** setting is respected
+Defaults are seeded on activation, so the widget works sensibly even before
+you ever open the Configure form.
+
+Credentials are never entered here: they're read at runtime through
+WHMCS's registrar module layer — nothing is stored by this module, nothing
+is logged, and the registrar module's **Test Mode** setting is respected
 automatically (uses `resellertest.enom.com` when enabled).
 
 ## Compatibility
@@ -105,11 +118,19 @@ automatically (uses `resellertest.enom.com` when enabled).
   error; the message shown is the API's own error text. Check your eNom
   account status and API access (eNom requires your server IP to be
   allow-listed for API access).
-- **Widget missing entirely** — confirm the file is in
-  `includes/hooks/` (not `modules/`), confirm the filename does not start
-  with `_` (WHMCS skips those), and clear `templates_c/`.
+- **Widget missing entirely** — confirm the addon is **Active** under
+  *Setup → Addon Modules* (inactive modules don't load their hooks), that
+  the folder is at `modules/addons/enom_balance_widget/` (not nested a
+  level deeper), and clear `templates_c/` if unsure.
 - **Balance looks stale** — the data is cached for 15 minutes; use the
   widget's refresh button for an immediate update.
+
+> **Note on eNom's own low-balance email:** eNom lets you set a notification
+> amount in its panel (or via the `UpdateNotificationAmount` API command),
+> but that value is **write-only** via the API — there is no read command —
+> so this widget cannot display or sync with it. That's why the widget has
+> its own **Red Threshold**: set it to the same number you use for eNom's
+> panel warning so the dashboard banner and eNom's email agree.
 
 ## License
 
