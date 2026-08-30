@@ -9,9 +9,10 @@
  * from admin dashboards after WHMCS 8.13 + PHP 8.x upgrades).
  *
  * File layout:
- *   - enom_balance_widget.php (this file): module config/activate/output —
- *     WHMCS looks for _config() in the module root file and renders it as
- *     the Configure form under Setup -> Addon Modules.
+ *   - enom_balance_widget.php (this file): module config/activate/_output —
+ *     WHMCS looks for _config() in the module root file (Configure button on
+ *     Setup -> Addon Modules) and renders _output() as the module's own
+ *     admin page in the Addon Modules sidebar.
  *   - widget.php: the EnomBalanceWidget dashboard-widget class + the
  *     settings-reading helper.
  *   - hooks.php: registers the widget via the AdminHomeWidgets hook; WHMCS
@@ -23,9 +24,9 @@
  *   - Domain count at Enom (returned by the same GETBALANCE call)
  *   - Pending transfers-in count (from the local tbldomains table, which
  *     WHMCS core's 4-hourly Domain Transfer Status cron keeps in sync)
- *   - Low-balance warning banner + orange balance figure, threshold
- *     configurable under Setup -> Addon Modules -> Enom Balance Widget
- *   - Widget column width (1 or 2 dashboard columns) configurable there too
+ *   - Two-level low-balance warning (yellow/orange + red/pink), thresholds
+ *     configurable on the module page AND via Configure
+ *   - Widget column width (1 or 2 dashboard columns) configurable too
  *
  * Requirements:
  *   - WHMCS 8.x / 9.x (AdminHomeWidgets hook + WHMCS\Module\AbstractWidget)
@@ -39,8 +40,8 @@
  * Installation:
  *   1. Copy the enom_balance_widget/ folder into your WHMCS root's
  *      modules/addons/ directory.
- *   2. Activate it under Setup -> Addon Modules, then click Configure to
- *      set the low-balance threshold and widget width.
+ *   2. Activate it under Setup -> Addon Modules, then open the module page
+ *      (or its Configure button) to set the thresholds and widget width.
  *   The widget registers itself via the module's hooks.php — nothing to
  *   copy into includes/hooks/.
  *
@@ -63,8 +64,8 @@ function enom_balance_widget_config()
         'name' => 'Enom Balance Widget',
         'description' => 'Admin dashboard widget showing the Enom reseller '
             . 'account balance, domain count, pending transfers, and a '
-            . 'configurable low-balance warning.',
-        'version' => '1.1.0',
+            . 'two-level low-balance warning.',
+        'version' => '1.2.0',
         'author' => 'JP Kelly',
         'fields' => [
             'low_balance_threshold' => [
@@ -73,8 +74,7 @@ function enom_balance_widget_config()
                 'Size' => '10',
                 'Default' => '100',
                 'Description' => 'Balance (USD) below which the balance figure '
-                    . 'turns orange and the low-balance banner appears. '
-                    . 'Default: 100.',
+                    . 'turns orange and the yellow banner appears. Default: 100.',
             ],
             'red_balance_threshold' => [
                 'FriendlyName' => 'Red Threshold (eNom warning level)',
@@ -82,9 +82,9 @@ function enom_balance_widget_config()
                 'Size' => '10',
                 'Default' => '30',
                 'Description' => 'Balance (USD) below which the balance figure '
-                    . 'turns red-style bold emphasis. Set this to the same value '
-                    . 'as your eNom panel warning threshold. Default: 30. '
-                    . 'Must be lower than the yellow threshold.',
+                    . 'turns red-pink and the red banner appears. Set this to '
+                    . 'the same value as your eNom panel warning threshold. '
+                    . 'Default: 30. Must be lower than the yellow threshold.',
             ],
             'widget_columns' => [
                 'FriendlyName' => 'Widget Width',
@@ -98,8 +98,8 @@ function enom_balance_widget_config()
 }
 
 /**
- * Called on activation — seed the settings with their defaults so the
- * Configure form is populated before the admin ever opens it.
+ * Called on activation — seed the settings with their defaults so both
+ * settings surfaces are populated before the admin ever opens them.
  */
 function enom_balance_widget_activate()
 {
@@ -125,8 +125,8 @@ function enom_balance_widget_activate()
     return [
         'status' => 'success',
         'description' => 'Add the "eNom Account Balance" widget to the admin '
-            . 'dashboard. Use Configure to set the low-balance threshold and '
-            . 'widget width.',
+            . 'dashboard. Open this module (or its Configure button) to set '
+            . 'the thresholds and widget width.',
     ];
 }
 
@@ -135,263 +135,115 @@ function enom_balance_widget_deactivate()
     return ['status' => 'success', 'description' => 'Enom Balance Widget disabled.'];
 }
 
+/**
+ * Admin-area module page (Setup -> Addon Modules -> Enom Balance Widget).
+ *
+ * WHMCS shows this page from the Addon Modules sidebar. We render a real
+ * settings form here — same settings as the Configure button on the addon
+ * list, stored in the same tbladdonmodules rows — so the module's own page
+ * is a working settings area rather than blank.
+ */
 function enom_balance_widget_output($vars)
 {
-    // The admin-area module page needs no custom content: WHMCS renders the
-    // Configure form itself from enom_balance_widget_config().
-    return '';
-}
+    $module = 'enom_balance_widget';
 
-/**
- * The dashboard widget itself. Kept in this same file — WHMCS loads addon
- * hook files (modules/addons/<name>/hooks.php), and the widget class must
- * be defined once.
- */
-if (!class_exists('EnomBalanceWidget')) {
-    class EnomBalanceWidget extends \WHMCS\Module\AbstractWidget
-    {
-        protected $title = 'eNom Account Balance';
-        protected $description = 'Current Enom reseller account balance and transfer status.';
-        protected $columns = 1;
-        protected $weight = 125;
-        protected $colour = 'green';
-        protected $cache = true;
-        protected $cacheExpiry = 15 * 60;
-        protected $requiredPermission = '';
+    // CSRF token: WHMCS makes generate_token() available in the admin area.
+    $token = function_exists('generate_token') ? generate_token('form') : '';
 
-        public function __construct()
-        {
-            // Config-driven width: 1 (default) or 2 dashboard columns.
-            $columns = (int) enom_balance_widget_get_setting('widget_columns', 1);
-            if ($columns === 2) {
-                $this->columns = 2;
+    $saved = false;
+    $error = '';
+
+    if (isset($_REQUEST['save']) && $_REQUEST['save'] == '1') {
+        $yellow = (float) $_REQUEST['low_balance_threshold'];
+        $red = (float) $_REQUEST['red_balance_threshold'];
+
+        if ($red >= $yellow) {
+            $error = 'The red threshold must be lower than the yellow threshold.';
+        } else {
+            try {
+                $columns = ($_REQUEST['widget_columns'] == '2') ? '2' : '1';
+                foreach ([
+                    'low_balance_threshold' => (string) $yellow,
+                    'red_balance_threshold' => (string) $red,
+                    'widget_columns' => $columns,
+                ] as $setting => $value) {
+                    $exists = Capsule::table('tbladdonmodules')
+                        ->where('module', $module)
+                        ->where('setting', $setting)
+                        ->count();
+                    if ($exists > 0) {
+                        Capsule::table('tbladdonmodules')
+                            ->where('module', $module)
+                            ->where('setting', $setting)
+                            ->update(['value' => $value]);
+                    } else {
+                        Capsule::table('tbladdonmodules')->insert([
+                            'module' => $module,
+                            'setting' => $setting,
+                            'value' => $value,
+                        ]);
+                    }
+                }
+                $saved = true;
+            } catch (\Throwable $e) {
+                $error = 'Save failed: ' . htmlspecialchars($e->getMessage());
             }
         }
-
-        public function getData()
-        {
-            $data = [
-                'configured' => false,
-                'error' => '',
-                'balance' => null,
-                'availableBalance' => null,
-                'domainCount' => null,
-                'pendingTransfers' => null,
-                'threshold' => (float) enom_balance_widget_get_setting('low_balance_threshold', 100),
-            ];
-
-            try {
-                if (!function_exists('curl_init')) {
-                    throw new \RuntimeException('PHP curl extension is not available.');
-                }
-
-                $registrar = new \WHMCS\Module\Registrar();
-                if (!$registrar->load('enom')) {
-                    throw new \RuntimeException('Enom registrar module not found.');
-                }
-
-                // No domain context needed for GETBALANCE — buildParams([]) is enough.
-                $params = $registrar->buildParams([]);
-                $uid = (string) ($params['Username'] ?? '');
-                $pw = (string) ($params['Password'] ?? '');
-                if ($uid === '' || $pw === '') {
-                    throw new \RuntimeException('Enom credentials are not configured.');
-                }
-                $data['configured'] = true;
-
-                $host = (stripos((string) ($params['TestMode'] ?? ''), 'on') === 0)
-                    ? 'resellertest.enom.com'
-                    : 'reseller.enom.com';
-
-                $query = http_build_query([
-                    'command' => 'GETBALANCE',
-                    'uid' => $uid,
-                    'pw' => $pw,
-                    'responsetype' => 'xml',
-                ]);
-
-                $ch = curl_init('https://' . $host . '/interface.asp?' . $query);
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT => 20,
-                    CURLOPT_CONNECTTIMEOUT => 10,
-                ]);
-                $response = curl_exec($ch);
-                $curlError = curl_error($ch);
-                curl_close($ch);
-
-                if ($response === false) {
-                    throw new \RuntimeException('Connection to Enom failed: ' . $curlError);
-                }
-
-                $xml = @simplexml_load_string($response);
-                if ($xml === false) {
-                    throw new \RuntimeException('Unparseable response from Enom.');
-                }
-
-                if ((int) $xml->ErrCount > 0) {
-                    $err = (string) ($xml->errors->Err1 ?? 'Enom API error');
-                    throw new \RuntimeException($err);
-                }
-
-                // eNom returns amounts like "2,261.65" — strip thousands separators.
-                $data['balance'] = (float) str_replace(',', '', (string) $xml->Balance);
-                $data['availableBalance'] = (float) str_replace(',', '', (string) $xml->AvailableBalance);
-                $data['domainCount'] = (int) $xml->DomainCount;
-            } catch (\Throwable $e) {
-                $data['error'] = $e->getMessage();
-            }
-
-            // Pending transfers-in come from the local DB (kept in sync by WHMCS
-            // core's Domain Transfer Status cron) — deliberately outside the
-            // try/catch above so an API outage still leaves this accurate.
-            try {
-                $data['pendingTransfers'] = (int) Capsule::table('tbldomains')
-                    ->where('status', 'Pending Transfer')
-                    ->where('registrar', 'enom')
-                    ->count();
-            } catch (\Throwable $e) {
-                // leave null; render shows a dash
-            }
-
-            return $data;
-        }
-
-        public function generateOutput($data)
-        {
-            if (!empty($data['error'])) {
-                return '<div class="widget-content-padded">'
-                    . '<div class="data color-orange">Enom error</div>'
-                    . '<div class="note">' . htmlspecialchars($data['error']) . '</div>'
-                    . '</div>';
-            }
-
-            if (empty($data['configured'])) {
-                return '<div class="widget-content-padded">'
-                    . '<div class="note">Configure the Enom registrar module credentials '
-                    . '(Setup &gt; Products/Services &gt; Domain Registrars) to display '
-                    . 'your account balance here.</div>'
-                    . '</div>';
-            }
-
-            $balance = $data['balance'];
-            $available = $data['availableBalance'];
-            $threshold = (float) ($data['threshold'] ?? 100);
-            $low = ($balance !== null && $balance < $threshold);
-            // WHMCS admin CSS has no color-red; stock widgets use color-orange for warnings.
-            $balanceClass = $low ? 'data color-orange' : 'data color-green';
-            $balanceFormatted = '$' . number_format((float) $balance, 2);
-            $availableFormatted = '$' . number_format((float) $available, 2);
-            $domainCount = (int) ($data['domainCount'] ?? 0);
-            $transfersText = ($data['pendingTransfers'] === null)
-                ? '&mdash;'
-                : (string) $data['pendingTransfers'];
-
-            $banner = '';
-            if ($low) {
-                $thresholdFormatted = '$' . number_format($threshold, 0);
-                $banner = '<div class="banner">'
-                    . '<strong>Low balance.</strong> '
-                    . '(Below ' . $thresholdFormatted . '.) &mdash; refill at '
-                    . '<a href="https://cp.enom.com/myaccount/refillaccount.aspx" target="_blank" rel="noopener">Enom</a>.'
-                    . '</div>';
-            }
-
-            // Typography mirrors the stock Billing widget exactly (its rules are
-            // scoped to .widget-billing/.widget-stripe, so they don't apply here).
-            // Scoping: WHMCS's dashboard template (homepage.tpl) wraps every widget
-            // in <div class="panel ... widget-{getId()|strtolower}"> — for this
-            // class that is .widget-enombalancewidget, which is exactly how the
-            // stock Billing widget gets its .widget-billing styles. So we scope to
-            // that native panel class and emit NO wrapper div of our own — no
-            // wrapper means no risk of an unclosed div nesting subsequent widgets
-            // inside this one. The .row margin reset is REQUIRED: inside the
-            // zero-padding panel-body, Bootstrap's negative row margins otherwise
-            // cancel the column padding and the left cells sit flush (clipped by
-            // panel-body overflow:hidden). The media query matches Billing's
-            // small-screen behaviour. Inline <style> in widget output is an
-            // established pattern (stock widgets embed <script> blocks).
-            $output = <<<EOF
-<style>
-.widget-enombalancewidget .row {
-    margin: 0;
-}
-.widget-enombalancewidget .item {
-    padding: 13px 0;
-    white-space: nowrap;
-    overflow: hidden;
-}
-.widget-enombalancewidget .item .data {
-    display: block;
-    font-size: 1.8em;
-}
-.widget-enombalancewidget .item .note {
-    font-size: 0.9em;
-    color: #a2a6af;
-}
-.widget-enombalancewidget .bordered-right {
-    border-right: 1px solid #eee;
-}
-.widget-enombalancewidget .bordered-top {
-    border-top: 1px solid #eee;
-}
-.widget-enombalancewidget .banner {
-    margin: 10px 0 0;
-    padding: 8px 12px;
-    font-size: 0.9em;
-    border: 1px solid #f3d48f;
-    border-radius: 4px;
-    background-color: #fcf8e3;
-    color: #8a6d3b;
-}
-@media only screen and (max-width: 767px) {
-    .widget-enombalancewidget .bordered-right,
-    .widget-enombalancewidget .bordered-top {
-        border-right: 0;
-        border-top: 0;
     }
-    .widget-enombalancewidget .col-sm-6 {
-        border-bottom: 1px solid #eee;
-    }
-    .widget-enombalancewidget .col-sm-6:last-child {
-        border: 0;
-    }
-}
-</style>
-<div class="row">
-    <div class="col-sm-6 bordered-right">
-        <div class="item">
-            <div class="{$balanceClass}">{$balanceFormatted}</div>
-            <div class="note">Account Balance</div>
-        </div>
+
+    $yellow = enom_balance_widget_get_setting('low_balance_threshold', '100');
+    $red = enom_balance_widget_get_setting('red_balance_threshold', '30');
+    $columns = enom_balance_widget_get_setting('widget_columns', '1');
+
+    $notice = $saved
+        ? '<div class="alert alert-success">Settings saved. The dashboard '
+            . 'widget updates on its next data refresh (cached 15 minutes, '
+            . 'or click the widget\'s refresh icon).</div>'
+        : ($error !== '' ? '<div class="alert alert-danger">' . $error . '</div>' : '');
+
+    $col1 = ($columns == '1') ? ' selected' : '';
+    $col2 = ($columns == '2') ? ' selected' : '';
+    $yellowEsc = htmlspecialchars((string) $yellow, ENT_QUOTES, 'UTF-8');
+    $redEsc = htmlspecialchars((string) $red, ENT_QUOTES, 'UTF-8');
+
+    return <<<HTML
+{$notice}
+<p>The eNom Account Balance dashboard widget shows your eNom reseller
+balance, domain count at eNom, pending transfers-in, and a two-level
+low-balance warning. Thresholds apply to the <em>current balance</em>
+reported by the eNom GETBALANCE API.</p>
+
+<form method="post" action="addonmodules.php?module={$module}">
+    <input type="hidden" name="save" value="1" />
+    <input type="hidden" name="token" value="{$token}" />
+    <table class="form" width="100%" border="0" cellspacing="2" cellpadding="3">
+        <tr>
+            <td width="30%" class="fieldlabel">Yellow Threshold (warning)</td>
+            <td class="fieldarea">
+                <input type="text" name="low_balance_threshold" value="{$yellowEsc}" size="10" /> USD
+                <div class="fieldnote">Balance figure turns orange and a yellow banner appears when the current balance is below this.</div>
+            </td>
+        </tr>
+        <tr>
+            <td class="fieldlabel">Red Threshold (eNom warning level)</td>
+            <td class="fieldarea">
+                <input type="text" name="red_balance_threshold" value="{$redEsc}" size="10" /> USD
+                <div class="fieldnote">Balance figure turns red-pink and a red "critically low" banner appears. Set this to the same value as your eNom panel warning threshold. Must be lower than the yellow threshold.</div>
+            </td>
+        </tr>
+        <tr>
+            <td class="fieldlabel">Widget Width</td>
+            <td class="fieldarea">
+                <select name="widget_columns">
+                    <option value="1"{$col1}>1 column</option>
+                    <option value="2"{$col2}>2 columns</option>
+                </select>
+            </td>
+        </tr>
+    </table>
+    <div class="btn-container">
+        <input type="submit" value="Save Changes" class="btn btn-primary" />
     </div>
-    <div class="col-sm-6">
-        <div class="item">
-            <div class="data">{$availableFormatted}</div>
-            <div class="note">Available Balance</div>
-        </div>
-    </div>
-    <div class="col-sm-6 bordered-right bordered-top">
-        <div class="item">
-            <div class="data">{$domainCount}</div>
-            <div class="note">Domains at Enom</div>
-        </div>
-    </div>
-    <div class="col-sm-6 bordered-top">
-        <div class="item">
-            <div class="data">{$transfersText}</div>
-            <div class="note">Pending Transfers In</div>
-        </div>
-    </div>
-</div>
-{$banner}
-EOF;
-
-        return $output;
-    }
-    }
+</form>
+HTML;
 }
-
-add_hook('AdminHomeWidgets', 1, function () {
-    return new EnomBalanceWidget();
-});
