@@ -201,6 +201,9 @@ class EnomBalanceWidget extends AbstractWidget
         // in their output, so inline assets here are an established pattern.
         $output = <<<EOF
 <style>
+.widget-enombalancewidget .row {
+    margin: 0;
+}
 .widget-enombalancewidget .item {
     padding: 13px 0;
     white-space: nowrap;
@@ -228,6 +231,21 @@ class EnomBalanceWidget extends AbstractWidget
     border-radius: 4px;
     background-color: #fcf8e3;
     color: #8a6d3b;
+}
+/* Same small-screen behaviour as the stock Billing widget: drop the grid
+   hairlines and use bottom borders on narrow viewports. */
+@media only screen and (max-width: 767px) {
+    .widget-enombalancewidget .bordered-right,
+    .widget-enombalancewidget .bordered-top {
+        border-right: 0;
+        border-top: 0;
+    }
+    .widget-enombalancewidget .col-sm-6 {
+        border-bottom: 1px solid #eee;
+    }
+    .widget-enombalancewidget .col-sm-6:last-child {
+        border: 0;
+    }
 }
 </style>
 <div class="row">
