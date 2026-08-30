@@ -177,8 +177,46 @@ class EnomBalanceWidget extends AbstractWidget
             ? '&mdash;'
             : (string) $data['pendingTransfers'];
 
+        // Typography mirrors the stock Billing widget exactly (its rules are
+        // scoped to .widget-billing/.widget-stripe, so they don't apply here):
+        // 1.8em numbers, 0.9em grey notes, single .row of four col-sm-6 cells
+        // wrapping into a 2x2 grid with shared #eee hairline borders. The
+        // style block is emitted once per dashboard page (scoped to
+        // .widget-enombalance so nothing else is affected). WHMCS itself
+        // embeds <script> blocks in stock widget output, so inline assets in
+        // widget output are an established pattern here.
         $output = <<<EOF
-<div class="widget-content-padded">
+<style>
+.widget-enombalance .item {
+    padding: 13px 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.widget-enombalance .item .data {
+    display: block;
+    font-size: 1.8em;
+}
+.widget-enombalance .item .note {
+    font-size: 0.9em;
+    color: #a2a6af;
+}
+.widget-enombalance .bordered-right {
+    border-right: 1px solid #eee;
+}
+.widget-enombalance .bordered-top {
+    border-top: 1px solid #eee;
+}
+.widget-enombalance .banner {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    font-size: 0.9em;
+    border: 1px solid #f3d48f;
+    border-radius: 4px;
+    background-color: #fcf8e3;
+    color: #8a6d3b;
+}
+</style>
+<div class="widget-enombalance">
 <div class="row">
     <div class="col-sm-6 bordered-right">
         <div class="item">
@@ -192,8 +230,6 @@ class EnomBalanceWidget extends AbstractWidget
             <div class="note">Available Balance</div>
         </div>
     </div>
-</div>
-<div class="row">
     <div class="col-sm-6 bordered-right bordered-top">
         <div class="item">
             <div class="data">{$domainCount}</div>
@@ -207,17 +243,16 @@ class EnomBalanceWidget extends AbstractWidget
         </div>
     </div>
 </div>
-</div>
 EOF;
 
         if ($low) {
             $thresholdFormatted = '$' . number_format((float) self::LOW_BALANCE_THRESHOLD, 0);
-            $output .= '<div class="widget-content-padded">'
-                . '<div class="note color-orange"><strong>Low balance.</strong> '
+            $output .= '<div class="widget-enombalance"><div class="banner">'
+                . '<strong>Low balance.</strong> '
                 . 'Enom declines registrations and renewals once the balance '
                 . 'reaches $0 &mdash; consider refilling at reseller.enom.com. '
-                . '(This widget warns below ' . $thresholdFormatted . '.)</div>'
-                . '</div>';
+                . '(This widget warns below ' . $thresholdFormatted . '.)'
+                . '</div></div>';
         }
 
         return $output;
