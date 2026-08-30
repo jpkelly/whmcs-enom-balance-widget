@@ -1,6 +1,8 @@
 # WHMCS eNom Account Balance Widget
 
-![Widget on the WHMCS admin dashboard](screenshot.png)
+<table>
+<tr>
+<td width="55%" valign="top">
 
 Admin dashboard widget for WHMCS showing your **eNom reseller account balance**,
 domain count at eNom, pending transfers-in, and two-level low-balance warnings.
@@ -8,6 +10,15 @@ domain count at eNom, pending transfers-in, and two-level low-balance warnings.
 Plaintext replacement for the abandoned Anaxa/aspnix *Enom Balance Widget*,
 which died on PHP 8.1+ (ionCube-encoded for PHP 7.1) and silently vanished
 from admin dashboards.
+
+</td>
+<td width="45%" valign="top">
+
+![Widget on the WHMCS admin dashboard](screenshot.png)
+
+</td>
+</tr>
+</table>
 
 ## Install
 
