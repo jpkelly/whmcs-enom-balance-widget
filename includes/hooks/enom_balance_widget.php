@@ -182,9 +182,8 @@ class EnomBalanceWidget extends AbstractWidget
             $thresholdFormatted = '$' . number_format((float) self::LOW_BALANCE_THRESHOLD, 0);
             $banner = '<div class="banner">'
                 . '<strong>Low balance.</strong> '
-                . 'Enom declines registrations and renewals once the balance '
-                . 'reaches $0 &mdash; consider refilling at reseller.enom.com. '
-                . '(This widget warns below ' . $thresholdFormatted . '.)'
+                . '(Below ' . $thresholdFormatted . '.) &mdash; refill at '
+                . '<a href="https://cp.enom.com/myaccount/refillaccount.aspx" target="_blank" rel="noopener">Enom</a>.'
                 . '</div>';
         }
 
