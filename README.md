@@ -1,5 +1,7 @@
 # WHMCS eNom Account Balance Widget
 
+![Widget on the WHMCS admin dashboard](screenshot.png)
+
 Admin dashboard widget for WHMCS showing your **eNom reseller account balance**,
 domain count at eNom, pending transfers-in, and two-level low-balance warnings.
 
