@@ -136,12 +136,16 @@ function enom_balance_widget_deactivate()
 }
 
 /**
- * Admin-area module page (Setup -> Addon Modules -> Enom Balance Widget).
+ * Admin-area module page (Setup -> Addon Modules -> Enom Balance Widget,
+ * also linked from the Addons dropdown menu).
  *
- * WHMCS shows this page from the Addon Modules sidebar. We render a real
- * settings form here — same settings as the Configure button on the addon
- * list, stored in the same tbladdonmodules rows — so the module's own page
- * is a working settings area rather than blank.
+ * NOTE THE WHMCS CONTRACT, easy to get wrong: per developers.whmcs.com
+ * ("Addon Module Output"), <module>_output() must ECHO its HTML — the
+ * return value is silently discarded by WHMCS, which just captures what the
+ * function prints. ("This should be actually output (i.e. echo'd) and not
+ * returned.") A returning _output() therefore produces a BLANK page. Build
+ * the HTML string (handy for escaping/testing) and echo it once at the end.
+ * All output is captured by WHMCS and displayed inside the admin template.
  */
 function enom_balance_widget_output($vars)
 {
@@ -206,7 +210,9 @@ function enom_balance_widget_output($vars)
     $yellowEsc = htmlspecialchars((string) $yellow, ENT_QUOTES, 'UTF-8');
     $redEsc = htmlspecialchars((string) $red, ENT_QUOTES, 'UTF-8');
 
-    return <<<HTML
+    // Build as a string (testable, escapable), then ECHO it — WHMCS captures
+    // echoed output and discards return values for _output().
+    $html = <<<HTML
 {$notice}
 <p>The eNom Account Balance dashboard widget shows your eNom reseller
 balance, domain count at eNom, pending transfers-in, and a two-level
@@ -246,4 +252,6 @@ reported by the eNom GETBALANCE API.</p>
     </div>
 </form>
 HTML;
+
+    echo $html;
 }
