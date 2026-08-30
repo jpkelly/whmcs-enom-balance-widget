@@ -177,36 +177,51 @@ class EnomBalanceWidget extends AbstractWidget
             ? '&mdash;'
             : (string) $data['pendingTransfers'];
 
+        $banner = '';
+        if ($low) {
+            $thresholdFormatted = '$' . number_format((float) self::LOW_BALANCE_THRESHOLD, 0);
+            $banner = '<div class="banner">'
+                . '<strong>Low balance.</strong> '
+                . 'Enom declines registrations and renewals once the balance '
+                . 'reaches $0 &mdash; consider refilling at reseller.enom.com. '
+                . '(This widget warns below ' . $thresholdFormatted . '.)'
+                . '</div>';
+        }
+
         // Typography mirrors the stock Billing widget exactly (its rules are
-        // scoped to .widget-billing/.widget-stripe, so they don't apply here):
-        // 1.8em numbers, 0.9em grey notes, single .row of four col-sm-6 cells
-        // wrapping into a 2x2 grid with shared #eee hairline borders. The
-        // style block is emitted once per dashboard page (scoped to
-        // .widget-enombalance so nothing else is affected). WHMCS itself
-        // embeds <script> blocks in stock widget output, so inline assets in
-        // widget output are an established pattern here.
+        // scoped to .widget-billing/.widget-stripe, so they don't apply here).
+        // Scoping: WHMCS's dashboard template (homepage.tpl) wraps every widget
+        // in <div class="panel ... widget-{getId()|strtolower}"> — for this
+        // class that is .widget-enombalancewidget, which is exactly how the
+        // stock Billing widget gets its .widget-billing styles. So we scope to
+        // that native panel class and emit NO wrapper div of our own — no
+        // wrapper means no risk of an unclosed div nesting subsequent widgets
+        // inside this one (a bug this widget shipped with once). The style
+        // block is safe to emit per-render: the browser dedupes identical
+        // <style> rules, and stock WHMCS widgets already embed <script> blocks
+        // in their output, so inline assets here are an established pattern.
         $output = <<<EOF
 <style>
-.widget-enombalance .item {
+.widget-enombalancewidget .item {
     padding: 13px 0;
     white-space: nowrap;
     overflow: hidden;
 }
-.widget-enombalance .item .data {
+.widget-enombalancewidget .item .data {
     display: block;
     font-size: 1.8em;
 }
-.widget-enombalance .item .note {
+.widget-enombalancewidget .item .note {
     font-size: 0.9em;
     color: #a2a6af;
 }
-.widget-enombalance .bordered-right {
+.widget-enombalancewidget .bordered-right {
     border-right: 1px solid #eee;
 }
-.widget-enombalance .bordered-top {
+.widget-enombalancewidget .bordered-top {
     border-top: 1px solid #eee;
 }
-.widget-enombalance .banner {
+.widget-enombalancewidget .banner {
     margin: 10px 0 0;
     padding: 8px 12px;
     font-size: 0.9em;
@@ -216,7 +231,6 @@ class EnomBalanceWidget extends AbstractWidget
     color: #8a6d3b;
 }
 </style>
-<div class="widget-enombalance">
 <div class="row">
     <div class="col-sm-6 bordered-right">
         <div class="item">
@@ -243,17 +257,8 @@ class EnomBalanceWidget extends AbstractWidget
         </div>
     </div>
 </div>
+{$banner}
 EOF;
-
-        if ($low) {
-            $thresholdFormatted = '$' . number_format((float) self::LOW_BALANCE_THRESHOLD, 0);
-            $output .= '<div class="widget-enombalance"><div class="banner">'
-                . '<strong>Low balance.</strong> '
-                . 'Enom declines registrations and renewals once the balance '
-                . 'reaches $0 &mdash; consider refilling at reseller.enom.com. '
-                . '(This widget warns below ' . $thresholdFormatted . '.)'
-                . '</div></div>';
-        }
 
         return $output;
     }
