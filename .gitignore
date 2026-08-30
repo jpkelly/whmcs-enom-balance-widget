@@ -1,0 +1,4 @@
+# Published artifacts only — keep secrets out
+.DS_Store
+*.swp
+*~
